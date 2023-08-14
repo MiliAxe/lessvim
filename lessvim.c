@@ -16,7 +16,20 @@
 #define ABUF_INIT                                                              \
   { NULL, 0 }
 
-// Editor {{{
+enum escapeKey {
+  ARROW_UP = 'A',
+  ARROW_DOWN = 'B',
+  ARROW_RIGHT = 'C',
+  ARROW_LEFT = 'D',
+};
+
+enum editorKey {
+  KEY_LEFT = 'h',
+  KEY_RIGHT = 'l',
+  KEY_DOWN = 'j',
+  KEY_UP = 'k',
+};
+
 struct editorConfigStruct {
   int cursorX;
   int cursorY;
@@ -24,7 +37,6 @@ struct editorConfigStruct {
   int screenRows;
   int screenCols;
 };
-// }}}
 
 struct editorConfigStruct editorConfig;
 
@@ -109,7 +121,7 @@ void buffMoveCursor(struct aBuffer *ab) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", editorConfig.cursorY + 1,
            editorConfig.cursorX + 1);
   appendBuffer(ab, buf, strlen(buf));
-};
+}
 
 void editorRefreshScreen() {
   struct aBuffer ab = ABUF_INIT;
@@ -206,12 +218,34 @@ void enableRawMode() {
     showErrorAndExit("Failed to set terminal attributes");
 }
 
-char editorReadKey() {
+int editorReadKey() {
   int readExitCode;
   char c;
   while ((readExitCode = read(STDIN_FILENO, &c, 1)) != 1) {
     if (readExitCode == -1 && errno != EAGAIN)
       showErrorAndExit("Terminal read failed");
+  }
+
+  if (c == '\x1b') {
+    char seq[3];
+
+    if (read(STDIN_FILENO, &seq[0], 1) != 1)
+      return '\x1b';
+    if (read(STDIN_FILENO, &seq[1], 1) != 1)
+      return '\x1b';
+
+    if (seq[0] == '[') {
+      switch (seq[1]) {
+      case ARROW_UP:
+        return KEY_UP;
+      case ARROW_DOWN:
+        return KEY_DOWN;
+      case ARROW_RIGHT:
+        return KEY_RIGHT;
+      case ARROW_LEFT:
+        return KEY_LEFT;
+      }
+    }
   }
   return c;
 }
@@ -224,23 +258,45 @@ void printInput(char c) {
   }
 }
 
-void editorMoveCursor(char key) {
-  switch (key) {
-  case 'h':
-    break;
-  case 'h':
-    break;
-  case 'h':
-    break;
-  case 'h':
-    break;
+void fixCursorIfOutScreen() {
+  if (editorConfig.cursorX > editorConfig.screenCols) {
+    editorConfig.cursorX = editorConfig.screenCols;
+  }
+  if (editorConfig.cursorY > editorConfig.screenRows) {
+    editorConfig.cursorY = editorConfig.screenRows;
+  }
+
+  if (editorConfig.cursorX < 0) {
+    editorConfig.cursorX = 0;
+  }
+  if (editorConfig.cursorY < 0) {
+    editorConfig.cursorY = 0;
   }
 }
 
-void editorProcessKeypress() {
-  char c = editorReadKey();
+void editorMoveCursor(char key) {
+  switch (key) {
+  case KEY_LEFT:
+    editorConfig.cursorX--;
+    break;
+  case KEY_RIGHT:
+    editorConfig.cursorX++;
+    break;
+  case KEY_DOWN:
+    editorConfig.cursorY++;
+    break;
+  case KEY_UP:
+    editorConfig.cursorY--;
+    break;
+  }
+  fixCursorIfOutScreen();
+  editorRefreshScreen();
+}
 
-  switch (c) {
+void editorProcessKeypress() {
+  int key = editorReadKey();
+
+  switch (key) {
   case CTRL_KEY('q'):
     editorRefreshScreen();
     exit(0);
@@ -250,8 +306,15 @@ void editorProcessKeypress() {
     editorRefreshScreen();
     break;
 
+  case KEY_UP:
+  case KEY_DOWN:
+  case KEY_RIGHT:
+  case KEY_LEFT:
+    editorMoveCursor(key);
+    break;
+
   default:
-    printInput(c);
+    // printInput(key);
     break;
   }
 }
