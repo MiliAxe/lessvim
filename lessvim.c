@@ -7,25 +7,22 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
-#include <stdio.h>
 
 #define VIM_VERSION "0.0.1"
 
 #define CTRL_KEY(k) ((k)&0x1f)
 
-#define ABUF_INIT \
-  {               \
-    NULL, 0       \
-  }
+#define ABUF_INIT                                                              \
+  { NULL, 0 }
 
-enum escapeKey
-{
+enum escapeKey {
   ARROW_UP = 'A',
   ARROW_DOWN = 'B',
   ARROW_RIGHT = 'C',
@@ -34,8 +31,7 @@ enum escapeKey
   ESCAPE_END = 'F'
 };
 
-enum editorKey
-{
+enum editorKey {
   KEY_LEFT = 'h',
   KEY_RIGHT = 'l',
   KEY_DOWN = 'j',
@@ -44,33 +40,42 @@ enum editorKey
   KEY_END
 };
 
-typedef struct erow
-{
+typedef struct erow {
   int size;
   char *chars;
 } erow;
 
-struct editorConfigStruct
-{
+struct editorConfigStruct {
   int cursorX;
   int cursorY;
   struct termios originalTerminalAttributes;
   int screenRows;
   int screenCols;
+  int rowoff;
   int numrows;
   erow *row;
 };
 
 struct editorConfigStruct editorConfig;
 
-struct aBuffer
-{
+struct aBuffer {
   char *buffer;
   int len;
 };
 
-void appendBuffer(struct aBuffer *ab, const char *s, int len)
-{
+void editorScrollDown() { editorConfig.rowoff++; }
+void editorScrollUp() { editorConfig.rowoff--; }
+void editorScrollVertical() {
+  if (editorConfig.cursorY >= editorConfig.screenRows &&
+      editorConfig.rowoff <= editorConfig.numrows - editorConfig.screenRows) {
+    editorScrollDown();
+  }
+  if (editorConfig.cursorY < 0 && editorConfig.rowoff > 0) {
+    editorScrollUp();
+  }
+}
+
+void appendBuffer(struct aBuffer *ab, const char *s, int len) {
   char *newBuf = realloc(ab->buffer, ab->len + len);
 
   if (newBuf == NULL)
@@ -81,35 +86,27 @@ void appendBuffer(struct aBuffer *ab, const char *s, int len)
   ab->buffer = newBuf;
   ab->len += len;
 }
-void showErrorAndExit(const char *message)
-{
+void showErrorAndExit(const char *message) {
   perror(message);
   exit(1);
 }
 
 void freeBuffer(struct aBuffer *ab) { free(ab->buffer); }
 
-void editorDrawTildes(struct aBuffer *ab)
-{
-  for (int y = 0; y < editorConfig.screenRows; y++)
-  {
-    if (y + 1 > editorConfig.numrows)
-    {
+void editorDrawTildes(struct aBuffer *ab) {
+  for (int y = 0; y < editorConfig.screenRows; y++) {
+    if (y + 1 > editorConfig.numrows) {
       appendBuffer(ab, "\x1b[K", 3);
-      if (y == editorConfig.screenRows - 1)
-      {
+      if (y == editorConfig.screenRows - 1) {
         appendBuffer(ab, "~", 1);
-      }
-      else
-      {
+      } else {
         appendBuffer(ab, "~\r\n", 3);
       }
     }
   }
 }
 
-void editorAppendRow(char *s, size_t len)
-{
+void editorAppendRow(char *s, size_t len) {
   // editorConfig.row->size = len;
   // editorConfig.row->chars = malloc(len + 1);
   // memcpy(editorConfig.row->chars, s, len);
@@ -126,8 +123,7 @@ void editorAppendRow(char *s, size_t len)
   editorConfig.numrows++;
 }
 
-void editorOpen(char *filename)
-{
+void editorOpen(char *filename) {
   FILE *filePtr = fopen(filename, "r");
   if (!filePtr)
     showErrorAndExit("Failed to read file");
@@ -136,11 +132,9 @@ void editorOpen(char *filename)
   size_t linecap = 0;
   ssize_t linelen;
 
-  while ((linelen = getline(&line, &linecap, filePtr)) != -1)
-  {
+  while ((linelen = getline(&line, &linecap, filePtr)) != -1) {
     while (linelen > 0 &&
-           (line[linelen - 1] == '\n' || line[linelen - 1] == '\r'))
-    {
+           (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) {
       linelen--;
     }
     editorAppendRow(line, linelen);
@@ -149,8 +143,7 @@ void editorOpen(char *filename)
   fclose(filePtr);
 }
 
-void bufferAddWelcome(struct aBuffer *ab)
-{
+void bufferAddWelcome(struct aBuffer *ab) {
   // Step 1: find the appropiate location to add the message
   const int MESSAGE_ROW = editorConfig.screenRows / 3;
   const char DELIM = '\r';
@@ -159,15 +152,12 @@ void bufferAddWelcome(struct aBuffer *ab)
   int i = 0;
   int delimeterCount = 0;
 
-  while (i < ab->len)
-  {
-    if (ab->buffer[i] == DELIM)
-    {
+  while (i < ab->len) {
+    if (ab->buffer[i] == DELIM) {
       delimeterCount++;
     }
 
-    if (delimeterCount == MESSAGE_ROW)
-    {
+    if (delimeterCount == MESSAGE_ROW) {
       break;
     }
     i++;
@@ -194,10 +184,8 @@ void bufferAddWelcome(struct aBuffer *ab)
   appendBuffer(ab, tempStr, welcomeStringLen + ab->len);
 }
 
-void editorDrawRows(struct aBuffer *ab)
-{
-  if (editorConfig.numrows == 0)
-  {
+void editorDrawRows(struct aBuffer *ab) {
+  if (editorConfig.numrows == 0) {
     bufferAddWelcome(ab);
   }
 
@@ -207,13 +195,12 @@ void editorDrawRows(struct aBuffer *ab)
   // int len = editorConfig.row[0].size;
   int len;
 
-  for (int i = 0; i < editorConfig.screenRows; i++)
-  {
+  for (int i = editorConfig.rowoff;
+       i < editorConfig.screenRows + editorConfig.rowoff; i++) {
     len = editorConfig.row[i].size;
     appendBuffer(ab, "\x1b[K", 3);
     appendBuffer(ab, editorConfig.row[i].chars, len);
-    if (i != editorConfig.screenRows - 1)
-    {
+    if (i != editorConfig.screenRows + editorConfig.rowoff - 1) {
       appendBuffer(ab, "\r\n", 2);
     }
   }
@@ -224,16 +211,14 @@ void editorDrawRows(struct aBuffer *ab)
   editorDrawTildes(ab);
 }
 
-void buffMoveCursor(struct aBuffer *ab)
-{
+void buffMoveCursor(struct aBuffer *ab) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", editorConfig.cursorY + 1,
            editorConfig.cursorX + 1);
   appendBuffer(ab, buf, strlen(buf));
 }
 
-void editorRefreshScreen()
-{
+void editorRefreshScreen() {
   struct aBuffer ab = ABUF_INIT;
 
   // Hide cursor
@@ -251,17 +236,14 @@ void editorRefreshScreen()
   freeBuffer(&ab);
 }
 
-void getCursorPosition(int *rows, int *cols)
-{
-  if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4)
-  {
+void getCursorPosition(int *rows, int *cols) {
+  if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) {
     showErrorAndExit("Failed to get cursor position");
   }
 
   char buffer[32];
 
-  for (unsigned int i = 0; i < sizeof(buffer) - 1; i++)
-  {
+  for (unsigned int i = 0; i < sizeof(buffer) - 1; i++) {
     if (read(STDIN_FILENO, &buffer[i], 1) != 1)
       break;
     if (buffer[i] == 'R')
@@ -270,52 +252,43 @@ void getCursorPosition(int *rows, int *cols)
 
   buffer[31] = '\0';
 
-  if (buffer[0] != '\x1b' || buffer[1] != '[')
-  {
+  if (buffer[0] != '\x1b' || buffer[1] != '[') {
     showErrorAndExit("Failed to get cursor position");
   }
-  if (sscanf(&buffer[2], "%d:%d", rows, cols) != 2)
-  {
+  if (sscanf(&buffer[2], "%d:%d", rows, cols) != 2) {
     showErrorAndExit("Failed to parse curosr postion");
   }
 }
 
-void getWindowSize(int *rows, int *columns)
-{
+void getWindowSize(int *rows, int *columns) {
   struct winsize ws;
 
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)
-  {
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
     showErrorAndExit("Get window size failed");
-  }
-  else
-  {
+  } else {
     *rows = ws.ws_row;
     *columns = ws.ws_col;
   }
 }
 
-void initEditor()
-{
+void initEditor() {
   editorConfig.cursorX = 0;
   editorConfig.cursorY = 0;
   editorConfig.numrows = 0;
   editorConfig.row = NULL;
+  editorConfig.rowoff = 0;
 
   getWindowSize(&editorConfig.screenRows, &editorConfig.screenCols);
 }
 
-void disableRawMode()
-{
+void disableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH,
-                &editorConfig.originalTerminalAttributes) == -1)
-  {
+                &editorConfig.originalTerminalAttributes) == -1) {
     showErrorAndExit("Failed to disable raw mode");
   };
 }
 
-void enableRawMode()
-{
+void enableRawMode() {
   if (tcgetattr(STDIN_FILENO, &editorConfig.originalTerminalAttributes) == -1)
     showErrorAndExit("Failed to get terminal attributes");
 
@@ -335,18 +308,15 @@ void enableRawMode()
     showErrorAndExit("Failed to set terminal attributes");
 }
 
-int editorReadKey()
-{
+int editorReadKey() {
   int readExitCode;
   char c;
-  while ((readExitCode = read(STDIN_FILENO, &c, 1)) != 1)
-  {
+  while ((readExitCode = read(STDIN_FILENO, &c, 1)) != 1) {
     if (readExitCode == -1 && errno != EAGAIN)
       showErrorAndExit("Terminal read failed");
   }
 
-  if (c == '\x1b')
-  {
+  if (c == '\x1b') {
     char seq[3];
 
     if (read(STDIN_FILENO, &seq[0], 1) != 1)
@@ -355,10 +325,8 @@ int editorReadKey()
       return '\x1b';
 
     // Check for arrow keys
-    if (seq[0] == '[')
-    {
-      switch (seq[1])
-      {
+    if (seq[0] == '[') {
+      switch (seq[1]) {
       case ARROW_UP:
         return KEY_UP;
       case ARROW_DOWN:
@@ -378,43 +346,32 @@ int editorReadKey()
   return c;
 }
 
-void printInput(char c)
-{
-  if (iscntrl(c))
-  {
+void printInput(char c) {
+  if (iscntrl(c)) {
     printf("%d\r\n", c);
-  }
-  else
-  {
+  } else {
     printf("%d ('%c')\r\n", c, c);
   }
 }
 
-void fixCursorIfOutScreen()
-{
-  if (editorConfig.cursorX > editorConfig.screenCols)
-  {
+void fixCursorIfOutScreen() {
+  if (editorConfig.cursorX > editorConfig.screenCols) {
     editorConfig.cursorX = editorConfig.screenCols;
   }
-  if (editorConfig.cursorY > editorConfig.screenRows)
-  {
+  if (editorConfig.cursorY > editorConfig.screenRows) {
     editorConfig.cursorY = editorConfig.screenRows;
   }
 
-  if (editorConfig.cursorX < 0)
-  {
+  if (editorConfig.cursorX < 0) {
     editorConfig.cursorX = 0;
   }
-  if (editorConfig.cursorY < 0)
-  {
+  if (editorConfig.cursorY < 0) {
     editorConfig.cursorY = 0;
   }
 }
 
-void editorMoveCursor(char key)
-{
-  switch (key)
-  {
+void editorMoveCursor(char key) {
+  switch (key) {
   case KEY_LEFT:
     editorConfig.cursorX--;
     break;
@@ -428,23 +385,18 @@ void editorMoveCursor(char key)
     editorConfig.cursorY--;
     break;
   }
-  fixCursorIfOutScreen();
-  editorRefreshScreen();
 }
 
 void moveCursorStartOfLine() { editorConfig.cursorX = 0; }
 
-void moveCursorEndOfLine()
-{
+void moveCursorEndOfLine() {
   editorConfig.cursorX = editorConfig.screenCols - 1;
 }
 
-void editorProcessKeypress()
-{
+void editorProcessKeypress() {
   int key = editorReadKey();
 
-  switch (key)
-  {
+  switch (key) {
   case CTRL_KEY('q'):
     editorRefreshScreen();
     exit(0);
@@ -459,6 +411,9 @@ void editorProcessKeypress()
   case KEY_RIGHT:
   case KEY_LEFT:
     editorMoveCursor(key);
+    editorScrollVertical();
+    fixCursorIfOutScreen();
+    editorRefreshScreen();
     break;
 
   case KEY_HOME:
@@ -469,27 +424,34 @@ void editorProcessKeypress()
     moveCursorEndOfLine();
     break;
 
+  case 'm':
+    editorScrollDown();
+    editorRefreshScreen();
+    break;
+
+  case 'n':
+    editorScrollUp();
+    editorRefreshScreen();
+    break;
+
   default:
     // printInput(key);
     break;
   }
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   enableRawMode();
   initEditor();
-  if (argc >= 2)
-  {
-    editorOpen(argv[1]);
+  if (1 || argc >= 2) {
+    editorOpen("lessvim.c");
   }
   editorRefreshScreen();
 
-  while (1)
-  {
+  while (1) {
     editorProcessKeypress();
   }
 
-  disableRawMode();
+  // disableRawMode();
   return EXIT_SUCCESS;
 }
