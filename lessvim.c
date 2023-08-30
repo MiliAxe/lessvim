@@ -184,15 +184,7 @@ void bufferAddWelcome(struct aBuffer *ab) {
   appendBuffer(ab, tempStr, welcomeStringLen + ab->len);
 }
 
-void editorDrawRows(struct aBuffer *ab) {
-  if (editorConfig.numrows == 0) {
-    bufferAddWelcome(ab);
-  }
-
-  // if (len > editorConfig.screenCols) {
-  //   len = editorConfig.screenCols;
-  // }
-  // int len = editorConfig.row[0].size;
+void bufferAddFileLines() {
   int len;
 
   for (int i = editorConfig.rowoff;
@@ -204,10 +196,14 @@ void editorDrawRows(struct aBuffer *ab) {
       appendBuffer(ab, "\r\n", 2);
     }
   }
-  // appendBuffer(ab, editorConfig.row[1].chars, len);
-  // // appendBuffer(ab, "\x1b[K", 3)e
-  // appendBuffer(ab, "\r\n", 2);
+}
 
+void editorDrawRows(struct aBuffer *ab) {
+  if (editorConfig.numrows == 0) {
+    bufferAddWelcome(ab);
+  }
+
+  bufferAddFileLines();
   editorDrawTildes(ab);
 }
 
@@ -355,11 +351,11 @@ void printInput(char c) {
 }
 
 void fixCursorIfOutScreen() {
-  if (editorConfig.cursorX > editorConfig.screenCols) {
-    editorConfig.cursorX = editorConfig.screenCols;
+  if (editorConfig.cursorX >= editorConfig.screenCols) {
+    editorConfig.cursorX = editorConfig.screenCols - 1;
   }
-  if (editorConfig.cursorY > editorConfig.screenRows) {
-    editorConfig.cursorY = editorConfig.screenRows;
+  if (editorConfig.cursorY >= editorConfig.screenRows) {
+    editorConfig.cursorY = editorConfig.screenRows - 1;
   }
 
   if (editorConfig.cursorX < 0) {
