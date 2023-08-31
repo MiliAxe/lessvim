@@ -1,9 +1,0 @@
-This is just
-
-a 
-normal file to test
-
-
-the features of lessvim
-
-stay humble yall
