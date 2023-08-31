@@ -107,11 +107,6 @@ void editorDrawTildes(struct aBuffer *ab) {
 }
 
 void editorAppendRow(char *s, size_t len) {
-  // editorConfig.row->size = len;
-  // editorConfig.row->chars = malloc(len + 1);
-  // memcpy(editorConfig.row->chars, s, len);
-  // editorConfig.row->chars[len] = '\0';
-  // editorConfig.numrows = 1;
   editorConfig.row =
       realloc(editorConfig.row, sizeof(erow) * (editorConfig.numrows + 1));
 
@@ -184,12 +179,21 @@ void bufferAddWelcome(struct aBuffer *ab) {
   appendBuffer(ab, tempStr, welcomeStringLen + ab->len);
 }
 
-void bufferAddFileLines() {
+void bufferAddFileLines(struct aBuffer *ab) {
   int len;
 
+  const int MAX_ROW_INDEX = (editorConfig.numrows < editorConfig.screenRows) ? editorConfig.numrows : editorConfig.screenRows;
+
   for (int i = editorConfig.rowoff;
-       i < editorConfig.screenRows + editorConfig.rowoff; i++) {
-    len = editorConfig.row[i].size;
+      i < MAX_ROW_INDEX + editorConfig.rowoff; i++) {
+
+
+    if (editorConfig.row[i].size > editorConfig.screenCols) {
+      len = editorConfig.screenCols;
+    } else {
+      len = editorConfig.row[i].size;
+    }
+
     appendBuffer(ab, "\x1b[K", 3);
     appendBuffer(ab, editorConfig.row[i].chars, len);
     if (i != editorConfig.screenRows + editorConfig.rowoff - 1) {
@@ -203,7 +207,7 @@ void editorDrawRows(struct aBuffer *ab) {
     bufferAddWelcome(ab);
   }
 
-  bufferAddFileLines();
+  bufferAddFileLines(ab);
   editorDrawTildes(ab);
 }
 
@@ -440,7 +444,7 @@ int main(int argc, char *argv[]) {
   enableRawMode();
   initEditor();
   if (1 || argc >= 2) {
-    editorOpen("lessvim.c");
+    editorOpen("Makefile");
   }
   editorRefreshScreen();
 
