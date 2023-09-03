@@ -182,11 +182,12 @@ void bufferAddWelcome(struct aBuffer *ab) {
 void bufferAddFileLines(struct aBuffer *ab) {
   int len;
 
-  const int MAX_ROW_INDEX = (editorConfig.numrows < editorConfig.screenRows) ? editorConfig.numrows : editorConfig.screenRows;
+  const int MAX_ROW_INDEX = (editorConfig.numrows < editorConfig.screenRows)
+                                ? editorConfig.numrows
+                                : editorConfig.screenRows;
 
-  for (int i = editorConfig.rowoff;
-      i < MAX_ROW_INDEX + editorConfig.rowoff; i++) {
-
+  for (int i = editorConfig.rowoff; i < MAX_ROW_INDEX + editorConfig.rowoff;
+       i++) {
 
     if (editorConfig.row[i].size > editorConfig.screenCols) {
       len = editorConfig.screenCols;
@@ -306,6 +307,18 @@ void enableRawMode() {
 
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &terminalAttributes))
     showErrorAndExit("Failed to set terminal attributes");
+  write(STDOUT_FILENO, "\x1b[1 q", 6);
+}
+
+int isCursorOutOfLine() {
+  int currentLineLen =
+      editorConfig.row[editorConfig.rowoff + editorConfig.cursorY].size;
+
+  if (editorConfig.cursorX >= currentLineLen) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int editorReadKey() {
@@ -390,7 +403,10 @@ void editorMoveCursor(char key) {
 void moveCursorStartOfLine() { editorConfig.cursorX = 0; }
 
 void moveCursorEndOfLine() {
-  editorConfig.cursorX = editorConfig.screenCols - 1;
+  int currentLineLen =
+      editorConfig.row[editorConfig.rowoff + editorConfig.cursorY].size;
+
+  editorConfig.cursorX = currentLineLen - 1;
 }
 
 void editorProcessKeypress() {
@@ -411,6 +427,10 @@ void editorProcessKeypress() {
   case KEY_RIGHT:
   case KEY_LEFT:
     editorMoveCursor(key);
+    if (isCursorOutOfLine()) {
+      moveCursorEndOfLine();
+    }
+
     editorScrollVertical();
     fixCursorIfOutScreen();
     editorRefreshScreen();
@@ -444,7 +464,7 @@ int main(int argc, char *argv[]) {
   enableRawMode();
   initEditor();
   if (1 || argc >= 2) {
-    editorOpen("Makefile");
+    editorOpen("lessvim.c");
   }
   editorRefreshScreen();
 
